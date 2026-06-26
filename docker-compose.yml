@@ -1,0 +1,37 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ego_score_db
+      MYSQL_USER: ego_bot
+      MYSQL_PASSWORD: secret
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./migrations/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./migrations/002_seed_stat_bounds.sql:/docker-entrypoint-initdb.d/002_seed_stat_bounds.sql:ro
+      - ./migrations/003_user_persistence.sql:/docker-entrypoint-initdb.d/003_user_persistence.sql:ro
+      - ./migrations/004_matches_played.sql:/docker-entrypoint-initdb.d/004_matches_played.sql:ro
+      - ./migrations/005_reference_rank.sql:/docker-entrypoint-initdb.d/005_reference_rank.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+volumes:
+  mysql_data:

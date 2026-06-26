@@ -1,0 +1,9 @@
+# Production overrides: do not expose MySQL to the internet.
+services:
+  db:
+    ports: []
+
+  bot:
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
