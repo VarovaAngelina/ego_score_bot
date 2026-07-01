@@ -74,6 +74,9 @@ class TopCog(commands.Cog):
                     target_channel = None
 
         try:
+            cache = getattr(self.bot, "cache_service", None)
+            if cache is not None:
+                await cache.refresh_all_users()
             if isinstance(target_channel, discord.TextChannel):
                 message = await service.update_live_top(channel=target_channel)
             else:

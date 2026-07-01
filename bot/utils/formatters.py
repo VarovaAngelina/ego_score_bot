@@ -55,6 +55,11 @@ def is_live_top_embed(embed: discord.Embed) -> bool:
     return title.startswith(TOP_LIVE_TITLE_PREFIX) and "Итоги" not in title
 
 
+def is_frozen_week_embed(embed: discord.Embed) -> bool:
+    title = embed.title or ""
+    return title.startswith("🏆 Итоги недели")
+
+
 def format_match_count(count: int) -> str:
     n = max(0, int(count))
     if n % 10 == 1 and n % 100 != 11:

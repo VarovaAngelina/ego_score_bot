@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -10,6 +11,7 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from bot.config import MSK
+from bot.services.refresh_jobs import refresh_all_and_update_top
 from bot.services.snapshot_service import SnapshotService
 
 logger = logging.getLogger("ego_score_bot.scheduler")
@@ -26,7 +28,7 @@ class SchedulerService:
             return
 
         refresh_minutes = self.bot.settings.cache_ttl_minutes
-        first_refresh = datetime.now(tz=MSK) + timedelta(minutes=2)
+        first_refresh = datetime.now(tz=MSK) + timedelta(seconds=30)
 
         self.scheduler.add_job(
             self._job_refresh_and_top,
@@ -63,7 +65,7 @@ class SchedulerService:
         self.scheduler.start()
         logger.info(
             "Scheduler started: first refresh+top at %s MSK, then every %s min; snapshot Sun 23:59 %s",
-            first_refresh.strftime("%H:%M"),
+            first_refresh.strftime("%H:%M:%S"),
             refresh_minutes,
             self.bot.settings.tz,
         )
@@ -74,28 +76,10 @@ class SchedulerService:
             logger.info("Scheduler stopped")
 
     async def _job_refresh_and_top(self) -> None:
-        cache = self.bot.cache_service
-        if cache is None:
-            logger.warning("Scheduled refresh skipped: cache service unavailable")
-            return
-
         try:
-            refreshed = await cache.refresh_all_users()
-            logger.info("Scheduled refresh completed: %s users updated", refreshed)
+            await refresh_all_and_update_top(self.bot)
         except Exception:
-            logger.exception("Scheduled refresh failed")
-            return
-
-        if not self.bot.settings.live_top_enabled:
-            return
-
-        try:
-            from bot.services.top_service import update_live_top
-
-            await update_live_top(self.bot)
-            logger.info("Scheduled live top embed updated")
-        except Exception:
-            logger.exception("Scheduled live top update failed")
+            logger.exception("Scheduled refresh and top update failed")
 
     async def _job_pre_snapshot_refresh(self) -> None:
         cache = self.bot.cache_service
@@ -113,3 +97,12 @@ class SchedulerService:
             await self.snapshot.take_snapshot(self.bot)
         except Exception:
             logger.exception("Weekly snapshot job failed")
+
+    async def run_startup_refresh(self) -> None:
+        """Refresh all registered players soon after bot start."""
+        await asyncio.sleep(20)
+        try:
+            await refresh_all_and_update_top(self.bot)
+            logger.info("Startup refresh and top update completed")
+        except Exception:
+            logger.exception("Startup refresh failed")

@@ -17,6 +17,7 @@ logger = logging.getLogger("ego_score_bot.top")
 CONFIG_CHANNEL_KEY = "live_top_channel_id"
 CONFIG_MESSAGE_KEY = "live_top_message_id"
 CONFIG_WEEK_KEY = "live_top_week_start"
+CONFIG_FINALIZED_WEEK_KEY = "live_top_finalized_week"
 CONFIG_ROLLOVER_MIGRATION_KEY = "live_top_rollover_v1"
 
 
@@ -71,6 +72,34 @@ class TopService:
             updated_at=msk_now(),
             top_limit=top_limit,
         )
+
+    async def _get_top_channel(self) -> discord.TextChannel | None:
+        channel_id = self.resolve_channel_id()
+        if channel_id is None:
+            return None
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except (discord.HTTPException, discord.NotFound):
+                logger.error("Top channel %s not found", channel_id)
+                return None
+        if not isinstance(channel, discord.TextChannel):
+            logger.error("Top channel %s is not a text channel", channel_id)
+            return None
+        return channel
+
+    async def finalize_week_for_snapshot(self, week_start: date) -> None:
+        """Sunday snapshot: freeze the live top message; do not post a second summary."""
+        channel = await self._get_top_channel()
+        if channel is None:
+            return
+
+        live_message = await self._find_newest_top_message(channel)
+        await self._finalize_week(channel, week_start, live_message)
+        await self._save_tracked_week(week_start)
+        await config_queries.set(self.db, CONFIG_FINALIZED_WEEK_KEY, week_start.isoformat())
+        logger.info("Week %s finalized in top channel %s (no duplicate post)", week_start, channel.id)
 
     async def build_embed(self) -> discord.Embed:
         return await self.build_embed_for_week(current_week_start())
@@ -159,24 +188,21 @@ class TopService:
         if tracked_week >= current_week:
             return message
 
-        await self._finalize_week(channel, tracked_week, message)
+        finalized_raw = await config_queries.get(self.db, CONFIG_FINALIZED_WEEK_KEY)
+        if finalized_raw != tracked_week.isoformat():
+            await self._finalize_week(channel, tracked_week, message)
+        else:
+            logger.info("Week %s already finalized on snapshot — skipping duplicate", tracked_week)
+
         await self._save_tracked_week(current_week)
         return None
 
     async def update_live_top(self, *, channel: discord.TextChannel | None = None) -> discord.Message | None:
         if channel is None:
-            channel_id = self.resolve_channel_id()
-            if channel_id is None:
-                return None
-            channel = self.bot.get_channel(channel_id)
+            channel = await self._get_top_channel()
             if channel is None:
-                try:
-                    channel = await self.bot.fetch_channel(channel_id)
-                except (discord.HTTPException, discord.NotFound):
-                    logger.error("Top channel %s not found", channel_id)
-                    return None
-
-        if not isinstance(channel, discord.TextChannel):
+                return None
+        elif not isinstance(channel, discord.TextChannel):
             logger.error("Top channel %s is not a text channel", getattr(channel, "id", channel))
             return None
 

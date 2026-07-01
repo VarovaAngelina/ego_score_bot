@@ -134,8 +134,8 @@ class EgoBot(commands.Bot):
         logger.info("Logged in as %s (id=%s)", self.user, self.user.id if self.user else "?")
 
         if self.scheduler_service is not None:
-
             self.scheduler_service.start()
+            asyncio.create_task(self.scheduler_service.run_startup_refresh())
 
 
 

@@ -80,39 +80,26 @@ class SnapshotService:
             len(snapshot_rows),
         )
 
-        await self.announce(
-            bot,
-            week_label=week_label,
-            leaderboard=leaderboard,
-            registered_count=registered_count,
-            scored_count=len(scored),
-        )
-        await self._finalize_top_channel(bot, week_start)
-        return True
-
-    async def _finalize_top_channel(self, bot: discord.Client, week_start) -> None:
-        if not self.settings.live_top_enabled:
-            return
-
         top = TopService(bot)
-        channel_id = top.resolve_channel_id()
-        if channel_id is None:
-            return
+        top_channel_id = top.resolve_channel_id()
+        if top_channel_id:
+            await top.finalize_week_for_snapshot(week_start)
 
-        channel = bot.get_channel(channel_id)
-        if channel is None:
-            try:
-                channel = await bot.fetch_channel(channel_id)
-            except (discord.HTTPException, discord.NotFound):
-                logger.error("Top channel %s not found for snapshot finalize", channel_id)
-                return
+        announce_id = self.settings.announce_channel_id
+        if (
+            self.settings.announce_enabled
+            and announce_id > 0
+            and (top_channel_id is None or announce_id != top_channel_id)
+        ):
+            await self.announce(
+                bot,
+                week_label=week_label,
+                leaderboard=leaderboard,
+                registered_count=registered_count,
+                scored_count=len(scored),
+            )
 
-        if not isinstance(channel, discord.TextChannel):
-            return
-
-        live_message = await top._find_newest_top_message(channel)
-        await top._finalize_week(channel, week_start, live_message)
-        await top.update_live_top(channel=channel)
+        return True
 
     async def announce(
         self,

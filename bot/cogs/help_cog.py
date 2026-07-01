@@ -9,7 +9,6 @@ from discord import app_commands
 from discord.ext import commands
 
 from bot.services.guide_service import ensure_pinned_guide
-from bot.services.top_service import update_live_top
 from bot.utils.discord_utils import ack_ephemeral
 from bot.utils.guide import build_guide_embed
 
@@ -51,11 +50,6 @@ class HelpCog(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         await ensure_pinned_guide(self.bot)
-        if self.bot.settings.live_top_enabled:
-            try:
-                await update_live_top(self.bot)
-            except Exception:
-                logger.exception("Failed to update live top on ready")
 
 
 async def setup(bot: commands.Bot) -> None:
