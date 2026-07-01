@@ -1,4 +1,4 @@
-"""APScheduler jobs: 30-min cache refresh, Sunday 23:59 MSK snapshot."""
+"""APScheduler jobs: cache refresh + live top, Sunday 23:59 MSK snapshot."""
 
 from __future__ import annotations
 
@@ -26,23 +26,27 @@ class SchedulerService:
             return
 
         refresh_minutes = self.bot.settings.cache_ttl_minutes
-        first_refresh = datetime.now(tz=MSK) + timedelta(minutes=refresh_minutes)
+        first_refresh = datetime.now(tz=MSK) + timedelta(minutes=2)
 
         self.scheduler.add_job(
-            self._job_refresh_cache,
+            self._job_refresh_and_top,
             IntervalTrigger(minutes=refresh_minutes),
-            id="refresh_cache",
+            id="refresh_and_top",
             replace_existing=True,
             max_instances=1,
             next_run_time=first_refresh,
         )
         self.scheduler.add_job(
-            self._job_update_live_top,
-            IntervalTrigger(minutes=refresh_minutes),
-            id="update_live_top",
+            self._job_pre_snapshot_refresh,
+            CronTrigger(
+                day_of_week="sun",
+                hour=23,
+                minute=45,
+                timezone=self.bot.settings.timezone,
+            ),
+            id="pre_snapshot_refresh",
             replace_existing=True,
             max_instances=1,
-            next_run_time=datetime.now(tz=MSK) + timedelta(seconds=20),
         )
         self.scheduler.add_job(
             self._job_weekly_snapshot,
@@ -58,7 +62,7 @@ class SchedulerService:
         )
         self.scheduler.start()
         logger.info(
-            "Scheduler started: first refresh at %s MSK, then every %s min; snapshot Sun 23:59 %s",
+            "Scheduler started: first refresh+top at %s MSK, then every %s min; snapshot Sun 23:59 %s",
             first_refresh.strftime("%H:%M"),
             refresh_minutes,
             self.bot.settings.tz,
@@ -69,7 +73,7 @@ class SchedulerService:
             self.scheduler.shutdown(wait=False)
             logger.info("Scheduler stopped")
 
-    async def _job_refresh_cache(self) -> None:
+    async def _job_refresh_and_top(self) -> None:
         cache = self.bot.cache_service
         if cache is None:
             logger.warning("Scheduled refresh skipped: cache service unavailable")
@@ -82,17 +86,9 @@ class SchedulerService:
             logger.exception("Scheduled refresh failed")
             return
 
-        if self.bot.settings.live_top_enabled:
-            try:
-                from bot.services.top_service import update_live_top
-
-                await update_live_top(self.bot)
-            except Exception:
-                logger.exception("Live top update failed")
-
-    async def _job_update_live_top(self) -> None:
         if not self.bot.settings.live_top_enabled:
             return
+
         try:
             from bot.services.top_service import update_live_top
 
@@ -100,6 +96,17 @@ class SchedulerService:
             logger.info("Scheduled live top embed updated")
         except Exception:
             logger.exception("Scheduled live top update failed")
+
+    async def _job_pre_snapshot_refresh(self) -> None:
+        cache = self.bot.cache_service
+        if cache is None:
+            logger.warning("Pre-snapshot refresh skipped: cache service unavailable")
+            return
+        try:
+            refreshed = await cache.refresh_all_users()
+            logger.info("Pre-snapshot refresh completed: %s users updated", refreshed)
+        except Exception:
+            logger.exception("Pre-snapshot refresh failed")
 
     async def _job_weekly_snapshot(self) -> None:
         try:

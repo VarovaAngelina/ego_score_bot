@@ -122,6 +122,18 @@ def test_build_history_pages_single_page() -> None:
     assert "Player01#TST" in pages[0].description
 
 
+def test_build_history_pages_total_uses_max_rank_when_row_missing() -> None:
+    entries = [
+        LeaderboardEntry(rank=1, user_id=1, riot_id="A#1", current_rank="Gold", ego_score=50.0, rank_delta=0),
+        LeaderboardEntry(rank=2, user_id=2, riot_id="B#2", current_rank="Gold", ego_score=49.0, rank_delta=0),
+        LeaderboardEntry(rank=8, user_id=8, riot_id="H#8", current_rank="Gold", ego_score=40.0, rank_delta=0),
+        LeaderboardEntry(rank=9, user_id=9, riot_id="I#9", current_rank="Gold", ego_score=39.0, rank_delta=0),
+    ]
+    pages = build_history_pages(entries, week_label="22–28 июня 2026")
+    assert "Всего игроков: 9" in pages[0].description
+    assert len(entries) == 4
+
+
 def test_build_history_pages_multiple_pages() -> None:
     entries = [
         LeaderboardEntry(

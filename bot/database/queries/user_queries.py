@@ -94,7 +94,6 @@ async def unregister(db: DatabasePool, discord_id: int) -> bool:
         return False
 
     await db.execute("DELETE FROM player_cache WHERE user_id = %s", (user.id,))
-    await db.execute("DELETE FROM weekly_snapshots WHERE user_id = %s", (user.id,))
     rows = await db.execute("DELETE FROM users WHERE id = %s", (user.id,))
     if rows > 0:
         logger.info("Unregistered user id=%s discord_id=%s", user.id, discord_id)

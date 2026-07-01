@@ -100,16 +100,23 @@ async def get_page(
 
 async def count_for_week(db: DatabasePool, week_start: date) -> int:
     row = await db.fetchone(
-        "SELECT COUNT(*) FROM weekly_snapshots WHERE week_start = %s",
+        """
+        SELECT COUNT(*), COALESCE(MAX(`rank`), 0)
+        FROM weekly_snapshots
+        WHERE week_start = %s
+        """,
         (week_start,),
     )
-    return int(row[0]) if row else 0
+    if not row:
+        return 0
+    stored, max_rank = int(row[0]), int(row[1])
+    return max(stored, max_rank)
 
 
 async def list_weeks(db: DatabasePool, limit: int = 20) -> list[WeekSummary]:
     rows = await db.fetchall(
         """
-        SELECT week_start, week_end, COUNT(*) AS player_count
+        SELECT week_start, week_end, COALESCE(MAX(`rank`), 0) AS player_count
         FROM weekly_snapshots
         GROUP BY week_start, week_end
         ORDER BY week_start DESC

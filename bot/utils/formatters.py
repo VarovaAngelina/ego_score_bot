@@ -142,11 +142,13 @@ def build_announce_embed(
     week_label: str,
     registered_count: int,
     top_limit: int,
+    scored_count: int | None = None,
 ) -> discord.Embed:
     embed = build_top_embed(
         entries,
         week_label=week_label,
         registered_count=registered_count,
+        scored_count=scored_count,
         updated_at=msk_now(),
         top_limit=top_limit,
     )
@@ -154,6 +156,13 @@ def build_announce_embed(
     if embed.footer is not None:
         embed.set_footer(text=embed.footer.text.replace("Обновлено", "Зафиксировано"))
     return embed
+
+
+def history_player_total(entries: list[LeaderboardEntry]) -> int:
+    """Players in the weekly archive (max rank, keeps gaps if a row was removed)."""
+    if not entries:
+        return 0
+    return max(entry.rank for entry in entries)
 
 
 def build_history_pages(
@@ -170,7 +179,7 @@ def build_history_pages(
         )
         return [embed]
 
-    total = len(entries)
+    total = history_player_total(entries)
     pages: list[discord.Embed] = []
     for page_index in range(0, total, page_size):
         chunk = entries[page_index : page_index + page_size]

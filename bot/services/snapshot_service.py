@@ -10,6 +10,7 @@ from bot.config import Settings
 from bot.database.connection import DatabasePool
 from bot.database.models import LeaderboardEntry, WeeklySnapshotRow
 from bot.database.queries import cache_queries, snapshot_queries, user_queries
+from bot.services.top_service import TopService
 from bot.utils.formatters import build_announce_embed, format_week_range
 from bot.utils.time_utils import current_week_end, current_week_start
 
@@ -22,6 +23,14 @@ class SnapshotService:
         self.settings = settings
 
     async def take_snapshot(self, bot: discord.Client) -> bool:
+        cache = getattr(bot, "cache_service", None)
+        if cache is not None:
+            try:
+                refreshed = await cache.refresh_all_users()
+                logger.info("Snapshot pre-refresh: %s users updated", refreshed)
+            except Exception:
+                logger.exception("Snapshot pre-refresh failed")
+
         week_start = current_week_start()
         week_end = current_week_end(week_start)
         week_label = format_week_range(week_start, week_end)
@@ -71,8 +80,39 @@ class SnapshotService:
             len(snapshot_rows),
         )
 
-        await self.announce(bot, week_label=week_label, leaderboard=leaderboard, registered_count=len(scored))
+        await self.announce(
+            bot,
+            week_label=week_label,
+            leaderboard=leaderboard,
+            registered_count=registered_count,
+            scored_count=len(scored),
+        )
+        await self._finalize_top_channel(bot, week_start)
         return True
+
+    async def _finalize_top_channel(self, bot: discord.Client, week_start) -> None:
+        if not self.settings.live_top_enabled:
+            return
+
+        top = TopService(bot)
+        channel_id = top.resolve_channel_id()
+        if channel_id is None:
+            return
+
+        channel = bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await bot.fetch_channel(channel_id)
+            except (discord.HTTPException, discord.NotFound):
+                logger.error("Top channel %s not found for snapshot finalize", channel_id)
+                return
+
+        if not isinstance(channel, discord.TextChannel):
+            return
+
+        live_message = await top._find_newest_top_message(channel)
+        await top._finalize_week(channel, week_start, live_message)
+        await top.update_live_top(channel=channel)
 
     async def announce(
         self,
@@ -81,6 +121,7 @@ class SnapshotService:
         week_label: str,
         leaderboard: list[LeaderboardEntry],
         registered_count: int,
+        scored_count: int,
     ) -> None:
         if not self.settings.announce_enabled:
             logger.info("Weekly announce skipped (ANNOUNCE_CHANNEL_ID=0)")
@@ -109,6 +150,7 @@ class SnapshotService:
             leaderboard,
             week_label=week_label,
             registered_count=registered_count,
+            scored_count=scored_count,
             top_limit=self.settings.top_limit,
         )
         await channel.send(embed=embed)

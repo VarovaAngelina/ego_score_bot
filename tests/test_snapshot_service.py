@@ -80,8 +80,10 @@ async def test_take_snapshot_saves_and_marks_stale(service: SnapshotService) -> 
         patch("bot.services.snapshot_service.snapshot_queries.save_week", save_week),
         patch("bot.services.snapshot_service.cache_queries.mark_week_stale", mark_stale),
         patch.object(service, "announce", announce),
+        patch.object(service, "_finalize_top_channel", AsyncMock()),
     ):
         bot = MagicMock()
+        bot.cache_service = None
         result = await service.take_snapshot(bot)
 
     assert result is True
@@ -105,6 +107,7 @@ async def test_announce_skipped_when_disabled(service: SnapshotService) -> None:
         week_label="22–28 июня 2026",
         leaderboard=[],
         registered_count=0,
+        scored_count=0,
     )
 
     channel.send.assert_not_called()

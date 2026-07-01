@@ -165,9 +165,12 @@ class CacheService:
         previous: PlayerCache | None,
         *,
         background: bool = False,
+        scheduled: bool = False,
     ) -> PlayerCacheView:
         if background:
             stats_result = await self.stats.fetch_stats_background(user.riot_id)
+        elif scheduled:
+            stats_result = await self.stats.fetch_stats(user.riot_id, allow_live=True)
         else:
             stats_result = await self.stats.fetch_stats(user.riot_id, allow_live=False)
 
@@ -240,6 +243,9 @@ class CacheService:
 
     async def refresh_all_users(self) -> int:
         users = await user_queries.list_all(self.db)
+        if not users:
+            return 0
+
         week_start = current_week_start()
         refreshed = 0
         delay_min = self.settings.request_delay_min
@@ -248,12 +254,19 @@ class CacheService:
         for index, user in enumerate(users):
             try:
                 cached = await cache_queries.get_by_user_week(self.db, user.id, week_start)
-                await self._refresh_user(user, week_start, cached, background=True)
+                await self._refresh_user(
+                    user,
+                    week_start,
+                    cached,
+                    scheduled=True,
+                )
                 refreshed += 1
             except PlayerNotFoundError:
                 logger.warning("Player not found during refresh: %s", user.riot_id)
             except StatsError as exc:
                 logger.warning("Refresh skipped for %s: %s", user.riot_id, exc)
+            except Exception as exc:
+                logger.warning("Refresh failed for %s: %s", user.riot_id, exc)
 
             if index < len(users) - 1:
                 await asyncio.sleep(random.uniform(delay_min, delay_max))

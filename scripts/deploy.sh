@@ -20,6 +20,11 @@ if [ ! -f .env ]; then
   exit 1
 fi
 
+if docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -q db 2>/dev/null | grep -q .; then
+  echo "Creating DB backup before deploy..."
+  bash "$(dirname "$0")/backup_db.sh" || echo "Backup skipped (db not ready)."
+fi
+
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose ps
 echo "Done. Logs: docker compose logs -f bot"
