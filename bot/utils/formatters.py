@@ -163,11 +163,19 @@ def build_announce_embed(
     return embed
 
 
-def history_player_total(entries: list[LeaderboardEntry]) -> int:
-    """Players in the weekly archive (max rank, keeps gaps if a row was removed)."""
-    if not entries:
-        return 0
-    return max(entry.rank for entry in entries)
+def renumber_leaderboard_entries(entries: list[LeaderboardEntry]) -> list[LeaderboardEntry]:
+    """History display: #1, #2, #3… without gaps from removed snapshot rows."""
+    return [
+        LeaderboardEntry(
+            rank=index,
+            user_id=entry.user_id,
+            riot_id=entry.riot_id,
+            current_rank=entry.current_rank,
+            ego_score=entry.ego_score,
+            rank_delta=0,
+        )
+        for index, entry in enumerate(entries, start=1)
+    ]
 
 
 def build_history_pages(
@@ -184,10 +192,11 @@ def build_history_pages(
         )
         return [embed]
 
-    total = history_player_total(entries)
+    ordered = renumber_leaderboard_entries(entries)
+    total = len(ordered)
     pages: list[discord.Embed] = []
     for page_index in range(0, total, page_size):
-        chunk = entries[page_index : page_index + page_size]
+        chunk = ordered[page_index : page_index + page_size]
         page_num = page_index // page_size + 1
         page_count = (total + page_size - 1) // page_size
         description = (
